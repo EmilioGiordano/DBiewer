@@ -92,57 +92,65 @@ function roundedPathFromPoints(points) {
 }
 
 function computeAvoidingPath(sx, sy, tx, ty, sourcePosition, targetPosition, obstacles) {
-  const goingRight = sourcePosition === Position.Right;
-  const enteringFromRight = targetPosition === Position.Right;
-  const enteringLeft = targetPosition === Position.Left;
+  // +1 = right, -1 = left
+  const srcDir = sourcePosition === Position.Right ? 1 : -1;
+  const tgtDir = targetPosition === Position.Right ? 1 : -1;
+  const sameSide = srcDir === tgtDir;
 
-  const exitX = goingRight ? sx + MARGIN : sx - MARGIN;
+  // Dynamic margin: scale with the horizontal distance between handles
+  // so we never overshoot and create loops
+  const hDist = Math.abs(sx - tx);
+  const margin = sameSide
+    ? Math.min(MARGIN, 20)
+    : Math.min(MARGIN, Math.max(8, hDist / 4));
 
-  let entryX;
-  if (enteringLeft) {
-    entryX = tx - MARGIN;
-  } else if (enteringFromRight) {
-    entryX = tx + MARGIN;
-  } else {
-    entryX = tx - MARGIN;
-  }
-
-  // Same-side routing (both right or both left): use a single corridor on that side
-  const sameSide = (goingRight && enteringFromRight) || (!goingRight && enteringLeft);
+  const exitX = sx + srcDir * margin;
+  const entryX = tx + tgtDir * margin;
 
   let corridorX;
+  const yMin = Math.min(sy, ty);
+  const yMax = Math.max(sy, ty);
+
   if (sameSide) {
-    // Both handles on same side — corridor should be the further-out of the two
-    corridorX = goingRight
+    // Both handles on same side — corridor runs alongside both tables
+    corridorX = srcDir > 0
       ? Math.max(exitX, entryX)
       : Math.min(exitX, entryX);
-    // Check for obstacles and push further out if needed
-    const yMin = Math.min(sy, ty);
-    const yMax = Math.max(sy, ty);
     for (let attempt = 0; attempt < 10; attempt++) {
       const hit = segmentHitsObstacle(corridorX, yMin, yMax, obstacles);
       if (!hit) break;
-      corridorX = goingRight ? hit.right + MARGIN : hit.left - MARGIN;
+      corridorX = srcDir > 0 ? hit.right + MARGIN : hit.left - MARGIN;
     }
   } else {
-    corridorX = findClearCorridor(exitX, entryX, sy, ty, obstacles);
+    // Cross-side: corridor between exit and entry
+    // Ensure exit and entry don't cross (which causes loops)
+    const midX = (sx + tx) / 2;
+    const exitOk = srcDir > 0 ? exitX < midX : exitX > midX;
+    const entryOk = tgtDir > 0 ? entryX > midX : entryX < midX;
+
+    if (!exitOk || !entryOk) {
+      // Handles cross — use midpoint as corridor
+      corridorX = midX;
+    } else {
+      corridorX = findClearCorridor(exitX, entryX, sy, ty, obstacles);
+    }
   }
 
-  const points = [
-    { x: sx, y: sy },
-    { x: exitX, y: sy },
-  ];
+  // Build waypoints
+  const points = [{ x: sx, y: sy }];
 
-  // If corridor is different from exitX, add intermediate horizontal segment
+  if (Math.abs(exitX - sx) > 1) {
+    points.push({ x: exitX, y: sy });
+  }
   if (Math.abs(corridorX - exitX) > 2) {
     points.push({ x: corridorX, y: sy });
   }
-
   if (Math.abs(corridorX - entryX) > 2) {
     points.push({ x: corridorX, y: ty });
   }
-
-  points.push({ x: entryX, y: ty });
+  if (Math.abs(entryX - tx) > 1) {
+    points.push({ x: entryX, y: ty });
+  }
   points.push({ x: tx, y: ty });
 
   // Deduplicate consecutive same-position points
