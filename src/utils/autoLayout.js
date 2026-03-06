@@ -71,6 +71,7 @@ const DIRECTION_MAP = {
 };
 
 export const LAYOUT_ALGORITHMS = [
+  { id: 'grid', label: 'Grid', description: 'Matrix layout with live spacing preview' },
   { id: 'layered', label: 'Hierarchical', description: 'Layered layout, ideal for ER diagrams' },
   { id: 'stress', label: 'Stress', description: 'Stress-minimization, organic look' },
   { id: 'mrtree', label: 'Tree', description: 'Tree layout for hierarchical schemas' },
@@ -210,4 +211,33 @@ export async function computeAutoLayout(tables, relationships, options = {}) {
   }
 
   return { positions, edgeRoutes };
+}
+
+export function computeGridLayout(tables, { hSpacing = 60, vSpacing = 60 } = {}) {
+  if (tables.length === 0) return {};
+  const cols = Math.ceil(Math.sqrt(tables.length));
+
+  // Compute per-row max height for a clean grid
+  const rowHeights = [];
+  for (let i = 0; i < tables.length; i++) {
+    const row = Math.floor(i / cols);
+    const h = estimateTableHeight(tables[i]);
+    rowHeights[row] = Math.max(rowHeights[row] || 0, h);
+  }
+
+  const positions = {};
+  let yOffset = 50;
+  for (let i = 0; i < tables.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    if (col === 0 && row > 0) {
+      yOffset += rowHeights[row - 1] + vSpacing;
+    }
+    const w = tables[i].width || 260;
+    positions[tables[i].id] = {
+      x: col * (w + hSpacing) + 50,
+      y: yOffset,
+    };
+  }
+  return positions;
 }

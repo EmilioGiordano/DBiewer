@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, LayoutGrid, ArrowDown, ArrowRight, ArrowUp, ArrowLeft, Loader2 } from 'lucide-react';
 import useStore from '../../store/useStore';
-import { computeAutoLayout, LAYOUT_ALGORITHMS, LAYOUT_DIRECTIONS } from '../../utils/autoLayout';
+import { computeAutoLayout, computeGridLayout, LAYOUT_ALGORITHMS, LAYOUT_DIRECTIONS } from '../../utils/autoLayout';
 
 const directionIcons = {
   TB: ArrowDown,
@@ -15,14 +15,41 @@ export default function AutoLayoutModal({ onClose }) {
   const relationships = useStore(s => s.relationships);
   const applyAutoLayout = useStore(s => s.applyAutoLayout);
 
-  const [algorithm, setAlgorithm] = useState('layered');
+  const [algorithm, setAlgorithm] = useState('grid');
   const [direction, setDirection] = useState('TB');
   const [spacing, setSpacing] = useState(60);
+  const [hSpacing, setHSpacing] = useState(60);
+  const [vSpacing, setVSpacing] = useState(60);
   const [hubCenter, setHubCenter] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
+  // Track if grid has been applied so we can undo on cancel
+  const gridApplied = useRef(false);
+
+  // General spacing sets both H and V
+  const handleGeneralSpacing = (val) => {
+    setSpacing(val);
+    setHSpacing(val);
+    setVSpacing(val);
+  };
+
+  // Live preview: apply grid layout instantly when spacing or algorithm changes
+  useEffect(() => {
+    if (algorithm !== 'grid' || tables.length === 0) return;
+    const positions = computeGridLayout(tables, { hSpacing, vSpacing });
+    applyAutoLayout(positions, {});
+    gridApplied.current = true;
+  }, [algorithm, hSpacing, vSpacing, tables.length]); // intentionally exclude tables/applyAutoLayout to avoid loop
+
   const handleApply = useCallback(async () => {
     if (tables.length === 0) return;
+
+    if (algorithm === 'grid') {
+      // Already applied via live preview
+      onClose();
+      return;
+    }
+
     setIsRunning(true);
     try {
       const result = await computeAutoLayout(tables, relationships, {
@@ -39,9 +66,10 @@ export default function AutoLayoutModal({ onClose }) {
     } finally {
       setIsRunning(false);
     }
-  }, [tables, relationships, algorithm, direction, spacing, hubCenter, applyAutoLayout, onClose]);
+  }, [tables, relationships, algorithm, direction, spacing, hSpacing, vSpacing, hubCenter, applyAutoLayout, onClose]);
 
   const showDirection = algorithm === 'layered' || algorithm === 'mrtree';
+  const isGrid = algorithm === 'grid';
 
   return (
     <div
@@ -169,38 +197,74 @@ export default function AutoLayoutModal({ onClose }) {
           )}
 
           {/* Spacing */}
-          <div>
-            <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Spacing</span>
-              <span style={{ color: 'var(--text-primary)' }}>{spacing}px</span>
-            </label>
-            <input
-              type="range"
-              min={20}
-              max={200}
-              value={spacing}
-              onChange={e => setSpacing(Number(e.target.value))}
-              style={{ width: '100%', accentColor: 'var(--accent)' }}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+                <span>General {isGrid && <span style={{ color: 'var(--accent)', fontSize: 10 }}>(live)</span>}</span>
+                <span style={{ color: 'var(--text-primary)' }}>{spacing}px</span>
+              </label>
+              <input
+                type="range"
+                min={20}
+                max={200}
+                value={spacing}
+                onChange={e => handleGeneralSpacing(Number(e.target.value))}
+                style={{ width: '100%', accentColor: 'var(--accent)' }}
+              />
+            </div>
+            {isGrid && (
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Horizontal</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{hSpacing}px</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={20}
+                    max={300}
+                    value={hSpacing}
+                    onChange={e => setHSpacing(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Vertical</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{vSpacing}px</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={20}
+                    max={300}
+                    value={vSpacing}
+                    onChange={e => setVSpacing(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Hub center option */}
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            cursor: 'pointer',
-            fontSize: 13,
-            color: 'var(--text-primary)',
-          }}>
-            <input
-              type="checkbox"
-              checked={hubCenter}
-              onChange={e => setHubCenter(e.target.checked)}
-              style={{ accentColor: 'var(--accent)' }}
-            />
-            Prioritize hub tables (most referenced at top/center)
-          </label>
+          {!isGrid && (
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              fontSize: 13,
+              color: 'var(--text-primary)',
+            }}>
+              <input
+                type="checkbox"
+                checked={hubCenter}
+                onChange={e => setHubCenter(e.target.checked)}
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              Prioritize hub tables (most referenced at top/center)
+            </label>
+          )}
 
           {/* Info */}
           <div style={{
@@ -235,29 +299,31 @@ export default function AutoLayoutModal({ onClose }) {
               fontSize: 13,
             }}
           >
-            Cancel
+            {isGrid && gridApplied.current ? 'Done' : 'Cancel'}
           </button>
-          <button
-            onClick={handleApply}
-            disabled={isRunning || tables.length === 0}
-            style={{
-              padding: '8px 20px',
-              border: 'none',
-              borderRadius: 6,
-              background: isRunning ? 'var(--bg-tertiary)' : 'var(--accent)',
-              color: '#fff',
-              cursor: isRunning ? 'wait' : 'pointer',
-              fontSize: 13,
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              opacity: tables.length === 0 ? 0.5 : 1,
-            }}
-          >
-            {isRunning && <Loader2 size={14} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />}
-            {isRunning ? 'Computing...' : 'Apply Layout'}
-          </button>
+          {!isGrid && (
+            <button
+              onClick={handleApply}
+              disabled={isRunning || tables.length === 0}
+              style={{
+                padding: '8px 20px',
+                border: 'none',
+                borderRadius: 6,
+                background: isRunning ? 'var(--bg-tertiary)' : 'var(--accent)',
+                color: '#fff',
+                cursor: isRunning ? 'wait' : 'pointer',
+                fontSize: 13,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                opacity: tables.length === 0 ? 0.5 : 1,
+              }}
+            >
+              {isRunning && <Loader2 size={14} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />}
+              {isRunning ? 'Computing...' : 'Apply Layout'}
+            </button>
+          )}
         </div>
       </div>
     </div>
