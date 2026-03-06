@@ -71,8 +71,9 @@ const DIRECTION_MAP = {
 };
 
 export const LAYOUT_ALGORITHMS = [
+  { id: 'clean', label: 'Clean', description: 'Minimal crossings, ideal for ER diagrams' },
   { id: 'grid', label: 'Grid', description: 'Matrix layout with live spacing preview' },
-  { id: 'layered', label: 'Hierarchical', description: 'Layered layout, ideal for ER diagrams' },
+  { id: 'layered', label: 'Hierarchical', description: 'ELK layered layout' },
   { id: 'stress', label: 'Stress', description: 'Stress-minimization, organic look' },
   { id: 'mrtree', label: 'Tree', description: 'Tree layout for hierarchical schemas' },
   { id: 'radial', label: 'Radial', description: 'Radial layout from central hub table' },
@@ -127,6 +128,11 @@ export async function computeAutoLayout(tables, relationships, options = {}) {
   } = options;
 
   if (tables.length === 0) return { positions: {}, edgeRoutes: {} };
+
+  // Clean layout uses custom Sugiyama implementation
+  if (algorithm === 'clean') {
+    return computeCleanLayout(tables, relationships, { direction, spacing });
+  }
 
   const degrees = computeDegrees(tables, relationships);
 
@@ -211,6 +217,193 @@ export async function computeAutoLayout(tables, relationships, options = {}) {
   }
 
   return { positions, edgeRoutes };
+}
+
+// ── Sugiyama-style "Clean" layout: minimal crossings ──
+
+export function computeCleanLayout(tables, relationships, options = {}) {
+  const { direction = 'LR', spacing = 80 } = options;
+  if (tables.length === 0) return { positions: {}, edgeRoutes: {} };
+
+  const tableMap = {};
+  tables.forEach(t => { tableMap[t.id] = t; });
+
+  // Build dependency graph: fromTable depends on toTable (fromTable has the FK)
+  // For layout: toTable is parent, fromTable is child
+  const parentOf = {}; // childId → Set<parentId>
+  const childOf = {};  // parentId → Set<childId>
+  tables.forEach(t => { parentOf[t.id] = new Set(); childOf[t.id] = new Set(); });
+
+  relationships.forEach(r => {
+    if (tableMap[r.fromTable] && tableMap[r.toTable]) {
+      parentOf[r.fromTable].add(r.toTable);
+      childOf[r.toTable].add(r.fromTable);
+    }
+  });
+
+  // Step 1: Layer assignment via longest-path from roots
+  const layers = assignLayers(tables, parentOf);
+
+  // Step 2: Crossing minimization (barycenter heuristic, multiple passes)
+  minimizeCrossings(layers, parentOf, childOf, 24);
+
+  // Step 3: Position assignment
+  const isVertical = direction === 'TB' || direction === 'BT';
+  const positions = assignPositions(layers, tableMap, spacing, isVertical, direction);
+
+  return { positions, edgeRoutes: {} };
+}
+
+function assignLayers(tables, parentOf) {
+  const tableIds = tables.map(t => t.id);
+  const layer = {};
+
+  // Compute longest path from roots (tables with no parents)
+  const memo = {};
+  function longestPath(id) {
+    if (memo[id] !== undefined) return memo[id];
+    if (parentOf[id].size === 0) return (memo[id] = 0);
+    let maxP = 0;
+    for (const pid of parentOf[id]) {
+      maxP = Math.max(maxP, longestPath(pid) + 1);
+    }
+    return (memo[id] = maxP);
+  }
+
+  // Handle cycles: detect and break them
+  const visiting = new Set();
+  const visited = new Set();
+  function hasCycle(id) {
+    if (visited.has(id)) return false;
+    if (visiting.has(id)) return true;
+    visiting.add(id);
+    const toRemove = [];
+    for (const pid of parentOf[id]) {
+      if (hasCycle(pid)) {
+        toRemove.push(pid);
+      }
+    }
+    toRemove.forEach(pid => parentOf[id].delete(pid));
+    visiting.delete(id);
+    visited.add(id);
+    return false;
+  }
+  tableIds.forEach(id => hasCycle(id));
+
+  tableIds.forEach(id => { layer[id] = longestPath(id); });
+
+  // Group by layer
+  const maxLayer = Math.max(0, ...Object.values(layer));
+  const layers = [];
+  for (let i = 0; i <= maxLayer; i++) layers.push([]);
+  tableIds.forEach(id => layers[layer[id]].push(id));
+
+  return layers;
+}
+
+function countCrossings(layerA, layerB, childOf) {
+  // Count crossings between two adjacent layers
+  // For each pair of edges (a1→b1, a2→b2), they cross if a1<a2 but b1>b2 (or vice versa)
+  const posA = {};
+  layerA.forEach((id, i) => { posA[id] = i; });
+  const posB = {};
+  layerB.forEach((id, i) => { posB[id] = i; });
+
+  // Collect edges from layerA to layerB
+  const edges = [];
+  layerA.forEach(aId => {
+    if (childOf[aId]) {
+      for (const bId of childOf[aId]) {
+        if (posB[bId] !== undefined) {
+          edges.push([posA[aId], posB[bId]]);
+        }
+      }
+    }
+  });
+
+  let crossings = 0;
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const [a1, b1] = edges[i];
+      const [a2, b2] = edges[j];
+      if ((a1 < a2 && b1 > b2) || (a1 > a2 && b1 < b2)) crossings++;
+    }
+  }
+  return crossings;
+}
+
+function minimizeCrossings(layers, parentOf, childOf, iterations) {
+  for (let iter = 0; iter < iterations; iter++) {
+    // Forward sweep (top to bottom)
+    for (let i = 1; i < layers.length; i++) {
+      reorderByBarycenter(layers[i], layers[i - 1], parentOf);
+    }
+    // Backward sweep (bottom to top)
+    for (let i = layers.length - 2; i >= 0; i--) {
+      reorderByBarycenter(layers[i], layers[i + 1], childOf);
+    }
+  }
+}
+
+function reorderByBarycenter(layer, adjacentLayer, connMap) {
+  // connMap: for each node in layer, connMap[node] gives the set of connected nodes in adjacentLayer
+  const adjPos = {};
+  adjacentLayer.forEach((id, i) => { adjPos[id] = i; });
+
+  const barycenters = layer.map(id => {
+    const connected = connMap[id];
+    if (!connected || connected.size === 0) return { id, bc: Infinity };
+    let sum = 0, count = 0;
+    for (const cid of connected) {
+      if (adjPos[cid] !== undefined) {
+        sum += adjPos[cid];
+        count++;
+      }
+    }
+    return { id, bc: count > 0 ? sum / count : Infinity };
+  });
+
+  // Sort by barycenter, keeping unconnected nodes in place
+  barycenters.sort((a, b) => a.bc - b.bc);
+  barycenters.forEach((item, i) => { layer[i] = item.id; });
+}
+
+function assignPositions(layers, tableMap, spacing, isVertical, direction) {
+  const positions = {};
+  const reversed = direction === 'BT' || direction === 'RL';
+
+  // Process layers in display order (reversed flips the order)
+  const orderedLayers = reversed ? [...layers].reverse() : layers;
+
+  let primaryOffset = 50;
+  for (let li = 0; li < orderedLayers.length; li++) {
+    const layer = orderedLayers[li];
+
+    let maxPrimaryDim = 0;
+    const sizes = layer.map(id => {
+      const t = tableMap[id];
+      const w = t.width || 260;
+      const h = estimateTableHeight(t);
+      maxPrimaryDim = Math.max(maxPrimaryDim, isVertical ? h : w);
+      return { id, w, h };
+    });
+
+    let secondaryOffset = 50;
+    for (const { id, w, h } of sizes) {
+      if (isVertical) {
+        positions[id] = { x: secondaryOffset, y: primaryOffset };
+        secondaryOffset += w + spacing;
+      } else {
+        positions[id] = { x: primaryOffset, y: secondaryOffset };
+        secondaryOffset += h + spacing;
+      }
+    }
+
+    // Advance by the widest/tallest node in this layer + gap
+    primaryOffset += maxPrimaryDim + spacing;
+  }
+
+  return positions;
 }
 
 export function computeGridLayout(tables, { hSpacing = 60, vSpacing = 60 } = {}) {

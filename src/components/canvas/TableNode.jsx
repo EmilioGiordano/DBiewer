@@ -4,12 +4,15 @@ import { GripVertical, Key, Snowflake, Hash, MessageSquare } from 'lucide-react'
 import useStore from '../../store/useStore';
 
 function TableNode({ id, data }) {
-  const selectedTableId = useStore(s => s.selectedTableId);
+  const isSelected = useStore(s => s.selectedTableId === id);
   const setSelectedTable = useStore(s => s.setSelectedTable);
   const setSelectedColumn = useStore(s => s.setSelectedColumn);
   const selectedColumnId = useStore(s => s.selectedColumnId);
-
-  const isSelected = selectedTableId === id;
+  const isRelHighlighted = useStore(s => {
+    if (!s.selectedRelationshipId) return false;
+    const rel = s.relationships.find(r => r.id === s.selectedRelationshipId);
+    return rel ? (rel.fromTable === id || rel.toTable === id) : false;
+  });
   const { table } = data;
   const columns = table.columns || [];
 
@@ -36,12 +39,14 @@ function TableNode({ id, data }) {
         minWidth: 220,
         background: 'var(--bg-secondary)',
         borderRadius: 8,
-        border: `2px solid ${isSelected ? table.color : 'var(--border)'}`,
+        border: `2px solid ${isSelected ? table.color : isRelHighlighted ? '#f59e0b' : 'var(--border)'}`,
         boxShadow: isSelected
           ? `0 0 0 1px ${table.color}40, 0 8px 24px rgba(0,0,0,0.3)`
+          : isRelHighlighted
+          ? '0 0 0 1px #f59e0b40, 0 0 12px #f59e0b30, 0 8px 24px rgba(0,0,0,0.3)'
           : '0 4px 12px rgba(0,0,0,0.2)',
         fontSize: 13,
-        transition: 'border-color 0.15s, box-shadow 0.15s',
+        transition: 'box-shadow 0.15s',
         position: 'relative',
       }}
     >

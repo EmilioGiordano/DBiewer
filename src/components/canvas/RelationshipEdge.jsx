@@ -170,10 +170,14 @@ function RelationshipEdge({
   sourcePosition, targetPosition, data, style = {},
 }) {
   const deleteRelationship = useStore(s => s.deleteRelationship);
-  const selectedTableId = useStore(s => s.selectedTableId);
+  const setSelectedRelationship = useStore(s => s.setSelectedRelationship);
+  const isRelSelected = useStore(s => s.selectedRelationshipId === id);
+  const isTableHighlighted = useStore(s =>
+    s.selectedTableId != null && (data?.fromTable === s.selectedTableId || data?.toTable === s.selectedTableId)
+  );
   const tables = useStore(s => s.tables);
 
-  const isHighlighted = data?.fromTable === selectedTableId || data?.toTable === selectedTableId;
+  const isHighlighted = isRelSelected || isTableHighlighted;
 
   const obstacles = useMemo(() => {
     const exclude = new Set([data?.fromTable, data?.toTable]);
@@ -197,19 +201,36 @@ function RelationshipEdge({
   const tgtLabelX = targetX + (targetPosition === Position.Left ? -18 : 18);
   const tgtLabelY = targetY - 14;
 
+  const handleEdgeClick = (e) => {
+    e.stopPropagation();
+    setSelectedRelationship(isRelSelected ? null : id);
+  };
+
   return (
     <>
+      {/* Invisible wider hit area for clicking */}
+      <path
+        d={edgePath}
+        style={{
+          stroke: 'transparent',
+          strokeWidth: 16,
+          fill: 'none',
+          cursor: 'pointer',
+        }}
+        onClick={handleEdgeClick}
+      />
       <path
         id={id}
         style={{
           ...style,
-          stroke: isHighlighted ? '#6c63ff' : '#64748b',
-          strokeWidth: isHighlighted ? 2.5 : 1.5,
+          stroke: isRelSelected ? '#f59e0b' : isHighlighted ? '#6c63ff' : '#64748b',
+          strokeWidth: isRelSelected ? 3 : isHighlighted ? 2.5 : 1.5,
           fill: 'none',
-          transition: 'stroke 0.15s, stroke-width 0.15s',
+          cursor: 'pointer',
         }}
         className="react-flow__edge-path"
         d={edgePath}
+        onClick={handleEdgeClick}
       />
       <EdgeLabelRenderer>
         {/* Source cardinality */}
@@ -219,7 +240,7 @@ function RelationshipEdge({
             transform: `translate(-50%, -50%) translate(${srcLabelX}px,${srcLabelY}px)`,
             fontSize: 11,
             fontWeight: 600,
-            color: isHighlighted ? '#6c63ff' : '#94a3b8',
+            color: isRelSelected ? '#f59e0b' : isHighlighted ? '#6c63ff' : '#94a3b8',
             pointerEvents: 'none',
           }}
         >
@@ -232,7 +253,7 @@ function RelationshipEdge({
             transform: `translate(-50%, -50%) translate(${tgtLabelX}px,${tgtLabelY}px)`,
             fontSize: 11,
             fontWeight: 600,
-            color: isHighlighted ? '#6c63ff' : '#94a3b8',
+            color: isRelSelected ? '#f59e0b' : isHighlighted ? '#6c63ff' : '#94a3b8',
             pointerEvents: 'none',
           }}
         >

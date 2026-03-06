@@ -110,7 +110,7 @@ export default function AutoLayoutModal({ onClose }) {
     }
   }, [tables, relationships, algorithm, direction, spacing, hubCenter, applyAutoLayout, onClose, handleDone]);
 
-  const showDirection = algorithm === 'layered' || algorithm === 'mrtree';
+  const showDirection = algorithm === 'layered' || algorithm === 'mrtree' || algorithm === 'clean';
   const isGrid = algorithm === 'grid';
 
   return (

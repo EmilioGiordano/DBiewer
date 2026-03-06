@@ -32,6 +32,7 @@ const useStore = create((set, get) => ({
   // UI state
   selectedTableId: null,
   selectedColumnId: null,
+  selectedRelationshipId: null,
   sidebarOpen: true,
   commandPaletteOpen: false,
 
@@ -43,8 +44,9 @@ const useStore = create((set, get) => ({
 
   setDiagramName: (name) => set({ diagramName: name }),
   setDbms: (dbms) => set({ dbms }),
-  setSelectedTable: (id) => set({ selectedTableId: id, selectedColumnId: null }),
-  setSelectedColumn: (tableId, colId) => set({ selectedTableId: tableId, selectedColumnId: colId }),
+  setSelectedTable: (id) => set({ selectedTableId: id, selectedColumnId: null, selectedRelationshipId: null }),
+  setSelectedColumn: (tableId, colId) => set({ selectedTableId: tableId, selectedColumnId: colId, selectedRelationshipId: null }),
+  setSelectedRelationship: (id) => set({ selectedRelationshipId: id, selectedTableId: null, selectedColumnId: null }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
 
@@ -167,7 +169,7 @@ const useStore = create((set, get) => ({
   setLivePositions: (positions) => set({ _livePositions: positions }),
 
   // Auto Layout config (persists across modal opens)
-  layoutConfig: { algorithm: 'grid', direction: 'TB', spacing: 60, hSpacing: 60, vSpacing: 60, hubCenter: false },
+  layoutConfig: { algorithm: 'clean', direction: 'LR', spacing: 60, hSpacing: 60, vSpacing: 60, hubCenter: false },
   setLayoutConfig: (updates) => set(s => ({ layoutConfig: { ...s.layoutConfig, ...updates } })),
 
   clearEdgeRoutes: () => set({ edgeRoutes: {} }),
