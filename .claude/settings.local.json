@@ -17,7 +17,19 @@
       "mcp__plugin_playwright_playwright__browser_close",
       "Bash(curl:*)",
       "mcp__plugin_playwright_playwright__browser_run_code",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "WebSearch",
+      "WebFetch(domain:reactflow.dev)",
+      "WebFetch(domain:bundlephobia.com)",
+      "WebFetch(domain:community.dbdiagram.io)",
+      "WebFetch(domain:crinkles.dev)",
+      "WebFetch(domain:www.baeldung.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:link.springer.com)",
+      "WebFetch(domain:www.red-gate.com)",
+      "WebFetch(domain:eclipse.dev)",
+      "WebFetch(domain:pkg-size.dev)",
+      "WebFetch(domain:svelteflow.dev)"
     ]
   }
 }

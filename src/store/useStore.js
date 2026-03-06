@@ -147,6 +147,17 @@ const useStore = create((set, get) => ({
     });
   },
 
+  applyAutoLayout: (positions) => {
+    const s = get();
+    s._pushHistory();
+    set({
+      tables: s.tables.map(t => positions[t.id]
+        ? { ...t, position: { ...positions[t.id] } }
+        : t
+      ),
+    });
+  },
+
   // Column CRUD
   addColumn: (tableId) => {
     const s = get();
