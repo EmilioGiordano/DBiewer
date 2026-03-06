@@ -25,13 +25,13 @@ export default function AutoLayoutModal({ onClose }) {
     if (tables.length === 0) return;
     setIsRunning(true);
     try {
-      const positions = await computeAutoLayout(tables, relationships, {
+      const result = await computeAutoLayout(tables, relationships, {
         algorithm,
         direction,
         spacing,
         hubCenter,
       });
-      applyAutoLayout(positions);
+      applyAutoLayout(result.positions, result.edgeRoutes);
       onClose();
     } catch (err) {
       console.error('Auto-layout failed:', err);

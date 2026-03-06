@@ -29,7 +29,8 @@
       "WebFetch(domain:www.red-gate.com)",
       "WebFetch(domain:eclipse.dev)",
       "WebFetch(domain:pkg-size.dev)",
-      "WebFetch(domain:svelteflow.dev)"
+      "WebFetch(domain:svelteflow.dev)",
+      "mcp__plugin_playwright_playwright__browser_wait_for"
     ]
   }
 }
