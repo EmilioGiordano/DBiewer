@@ -37,6 +37,9 @@ function buildNodes(tables, notes, selectedTableId) {
   return [...tableNodes, ...noteNodes];
 }
 
+// Minimum gap between near edges for clean cross-side routing
+const CROSS_SIDE_MIN_GAP = 80;
+
 function buildEdges(relationships, tables) {
   return relationships.map(rel => {
     const fromTable = tables.find(t => t.id === rel.fromTable);
@@ -45,27 +48,26 @@ function buildEdges(relationships, tables) {
 
     const fw = fromTable.width || 260;
     const tw = toTable.width || 260;
-    const fromCx = fromTable.position.x + fw / 2;
-    const toCx = toTable.position.x + tw / 2;
-
-    // Check if tables overlap horizontally (vertically stacked)
     const fromL = fromTable.position.x;
     const fromR = fromL + fw;
     const toL = toTable.position.x;
     const toR = toL + tw;
-    const overlapX = Math.max(0, Math.min(fromR, toR) - Math.max(fromL, toL));
-    const minWidth = Math.min(fw, tw);
-    const isVerticallyStacked = overlapX > minWidth * 0.3;
+
+    // Gap between near edges (negative means overlap)
+    // If from is left of to: gap = toL - fromR
+    // If from is right of to: gap = fromL - toR
+    const fromIsLeft = fromL + fw / 2 < toL + tw / 2;
+    const edgeGap = fromIsLeft ? (toL - fromR) : (fromL - toR);
 
     let sourceHandle, targetHandle;
 
-    if (isVerticallyStacked) {
-      // Tables overlap horizontally — route on the same side
-      // Pick the side with more free space outside the table pair
-      const pairLeft = Math.min(fromL, toL);
-      const pairRight = Math.max(fromR, toR);
-      // Simple heuristic: use the side where both table edges are closer
-      // (tighter path). If right edges are closer to each other, use right.
+    if (edgeGap >= CROSS_SIDE_MIN_GAP) {
+      // Tables are well separated — clean cross-side routing
+      sourceHandle = fromIsLeft ? `${rel.fromColumn}-right` : `${rel.fromColumn}-left-src`;
+      targetHandle = fromIsLeft ? `${rel.toColumn}-left` : `${rel.toColumn}-right-tgt`;
+    } else {
+      // Tables are close or overlapping — use same-side routing
+      // Pick the side with more space / tighter alignment
       const rightSpread = Math.abs(fromR - toR);
       const leftSpread = Math.abs(fromL - toL);
       const useRight = rightSpread <= leftSpread;
@@ -77,11 +79,6 @@ function buildEdges(relationships, tables) {
         sourceHandle = `${rel.fromColumn}-left-src`;
         targetHandle = `${rel.toColumn}-left`;
       }
-    } else {
-      // Tables are side by side — route across
-      const fromIsLeft = fromCx < toCx;
-      sourceHandle = fromIsLeft ? `${rel.fromColumn}-right` : `${rel.fromColumn}-left-src`;
-      targetHandle = fromIsLeft ? `${rel.toColumn}-left` : `${rel.toColumn}-right-tgt`;
     }
 
     return {
