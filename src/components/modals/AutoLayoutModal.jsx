@@ -14,39 +14,81 @@ export default function AutoLayoutModal({ onClose }) {
   const tables = useStore(s => s.tables);
   const relationships = useStore(s => s.relationships);
   const applyAutoLayout = useStore(s => s.applyAutoLayout);
+  const setLivePositions = useStore(s => s.setLivePositions);
+  const layoutConfig = useStore(s => s.layoutConfig);
+  const setLayoutConfig = useStore(s => s.setLayoutConfig);
 
-  const [algorithm, setAlgorithm] = useState('grid');
-  const [direction, setDirection] = useState('TB');
-  const [spacing, setSpacing] = useState(60);
-  const [hSpacing, setHSpacing] = useState(60);
-  const [vSpacing, setVSpacing] = useState(60);
-  const [hubCenter, setHubCenter] = useState(false);
+  const [algorithm, setAlgorithmState] = useState(layoutConfig.algorithm);
+  const [direction, setDirectionState] = useState(layoutConfig.direction);
+  const [spacing, setSpacingState] = useState(layoutConfig.spacing);
+  const [hSpacing, setHSpacingState] = useState(layoutConfig.hSpacing);
+  const [vSpacing, setVSpacingState] = useState(layoutConfig.vSpacing);
+  const [hubCenter, setHubCenterState] = useState(layoutConfig.hubCenter);
   const [isRunning, setIsRunning] = useState(false);
 
-  // Track if grid has been applied so we can undo on cancel
+  const [showDone, setShowDone] = useState(false);
   const gridApplied = useRef(false);
+  const hasMounted = useRef(false);
+  const lastPositions = useRef(null);
+  const rafId = useRef(0);
+  const tablesRef = useRef(tables);
+  tablesRef.current = tables;
 
-  // General spacing sets both H and V
+  // Persist config to store on every change
+  const setAlgorithm = (v) => { setAlgorithmState(v); setLayoutConfig({ algorithm: v }); };
+  const setDirection = (v) => { setDirectionState(v); setLayoutConfig({ direction: v }); };
+  const setHubCenter = (v) => { setHubCenterState(v); setLayoutConfig({ hubCenter: v }); };
+
+  const setHSpacing = (v) => { setHSpacingState(v); setLayoutConfig({ hSpacing: v }); };
+  const setVSpacing = (v) => { setVSpacingState(v); setLayoutConfig({ vSpacing: v }); };
+
+  // Clean up live positions on unmount
+  useEffect(() => () => setLivePositions(null), []);
+
   const handleGeneralSpacing = (val) => {
-    setSpacing(val);
-    setHSpacing(val);
-    setVSpacing(val);
+    setSpacingState(val);
+    setHSpacingState(val);
+    setVSpacingState(val);
+    setLayoutConfig({ spacing: val, hSpacing: val, vSpacing: val });
   };
 
-  // Live preview: apply grid layout instantly when spacing or algorithm changes
+  // Live preview: position-only update via store → Canvas updates nodes without re-rendering TableNode
   useEffect(() => {
-    if (algorithm !== 'grid' || tables.length === 0) return;
-    const positions = computeGridLayout(tables, { hSpacing, vSpacing });
-    applyAutoLayout(positions, {});
-    gridApplied.current = true;
-  }, [algorithm, hSpacing, vSpacing, tables.length]); // intentionally exclude tables/applyAutoLayout to avoid loop
+    if (algorithm !== 'grid' || tablesRef.current.length === 0) return;
+    if (!hasMounted.current) { hasMounted.current = true; return; }
+
+    cancelAnimationFrame(rafId.current);
+    rafId.current = requestAnimationFrame(() => {
+      const positions = computeGridLayout(tablesRef.current, { hSpacing, vSpacing });
+      lastPositions.current = positions;
+      setLivePositions(positions);
+      if (!gridApplied.current) {
+        gridApplied.current = true;
+        setShowDone(true);
+      }
+    });
+
+    return () => cancelAnimationFrame(rafId.current);
+  }, [algorithm, hSpacing, vSpacing]);
+
+  const handleDone = useCallback(() => {
+    setLivePositions(null);
+    if (gridApplied.current && lastPositions.current) {
+      applyAutoLayout(lastPositions.current, {});
+    }
+    onClose();
+  }, [applyAutoLayout, setLivePositions, onClose]);
+
+  const handleCancel = useCallback(() => {
+    setLivePositions(null); // Canvas resyncs from store → original positions
+    onClose();
+  }, [setLivePositions, onClose]);
 
   const handleApply = useCallback(async () => {
     if (tables.length === 0) return;
 
     if (algorithm === 'grid') {
-      // Already applied via live preview
-      onClose();
+      handleDone();
       return;
     }
 
@@ -66,7 +108,7 @@ export default function AutoLayoutModal({ onClose }) {
     } finally {
       setIsRunning(false);
     }
-  }, [tables, relationships, algorithm, direction, spacing, hSpacing, vSpacing, hubCenter, applyAutoLayout, onClose]);
+  }, [tables, relationships, algorithm, direction, spacing, hubCenter, applyAutoLayout, onClose, handleDone]);
 
   const showDirection = algorithm === 'layered' || algorithm === 'mrtree';
   const isGrid = algorithm === 'grid';
@@ -82,7 +124,7 @@ export default function AutoLayoutModal({ onClose }) {
         justifyContent: 'center',
         zIndex: 1000,
       }}
-      onClick={onClose}
+      onClick={handleCancel}
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -111,7 +153,7 @@ export default function AutoLayoutModal({ onClose }) {
             </span>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleCancel}
             style={{
               background: 'none',
               border: 'none',
@@ -287,20 +329,54 @@ export default function AutoLayoutModal({ onClose }) {
           padding: '12px 20px',
           borderTop: '1px solid var(--border)',
         }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
-            {isGrid && gridApplied.current ? 'Done' : 'Cancel'}
-          </button>
+          {isGrid && showDone ? (
+            <>
+              <button
+                onClick={handleCancel}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  background: 'transparent',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDone}
+                style={{
+                  padding: '8px 20px',
+                  border: 'none',
+                  borderRadius: 6,
+                  background: 'var(--accent)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                Done
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={isGrid ? onClose : handleCancel}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: 13,
+              }}
+            >
+              Cancel
+            </button>
+          )}
           {!isGrid && (
             <button
               onClick={handleApply}

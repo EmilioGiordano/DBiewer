@@ -162,6 +162,14 @@ const useStore = create((set, get) => ({
     });
   },
 
+  // Live preview positions — only Canvas reads this for efficient position-only updates
+  _livePositions: null,
+  setLivePositions: (positions) => set({ _livePositions: positions }),
+
+  // Auto Layout config (persists across modal opens)
+  layoutConfig: { algorithm: 'grid', direction: 'TB', spacing: 60, hSpacing: 60, vSpacing: 60, hubCenter: false },
+  setLayoutConfig: (updates) => set(s => ({ layoutConfig: { ...s.layoutConfig, ...updates } })),
+
   clearEdgeRoutes: () => set({ edgeRoutes: {} }),
 
   // Column CRUD

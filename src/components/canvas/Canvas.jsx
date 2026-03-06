@@ -106,6 +106,7 @@ export default function Canvas() {
   const addRelationship = useStore(s => s.addRelationship);
   const setSelectedTable = useStore(s => s.setSelectedTable);
   const selectedTableId = useStore(s => s.selectedTableId);
+  const livePositions = useStore(s => s._livePositions);
 
   // React Flow managed state for smooth dragging
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -113,6 +114,8 @@ export default function Canvas() {
 
   // Track whether drag is in progress to avoid store->RF sync during drag
   const isDragging = useRef(false);
+  // Track if live preview was active (to resync on clear)
+  const wasLive = useRef(false);
 
   // Sync store -> React Flow nodes when store data changes (not during drag)
   useEffect(() => {
@@ -125,6 +128,21 @@ export default function Canvas() {
   useEffect(() => {
     setEdges(buildEdges(relationships, tables));
   }, [relationships, tables, setEdges]);
+
+  // Live preview: update ONLY positions (data refs stay same → TableNode skips re-render)
+  useEffect(() => {
+    if (livePositions) {
+      wasLive.current = true;
+      setNodes(prev => prev.map(n =>
+        livePositions[n.id] ? { ...n, position: livePositions[n.id] } : n
+      ));
+    } else if (wasLive.current) {
+      // Preview ended — full resync from store
+      wasLive.current = false;
+      setNodes(buildNodes(tables, notes, selectedTableId));
+      setEdges(buildEdges(relationships, tables));
+    }
+  }, [livePositions]);
 
   // Rebuild edges during drag so lines follow the table
   const onNodeDrag = useCallback((event, node, dragNodes) => {
