@@ -3,11 +3,13 @@ import {
   Table2, StickyNote, Undo2, Redo2, Save, Download, Upload,
   FileJson, Image, FileCode, Settings, Search, Trash2,
   Database, ChevronDown, PanelLeftClose, PanelLeft, Sun, Moon,
+  LayoutGrid,
 } from 'lucide-react';
 import useStore from '../../store/useStore';
 import { DB_LABELS, DBMS } from '../../data/dbTypes';
 import ImportModal from '../modals/ImportModal';
 import ExportSQLModal from '../modals/ExportSQLModal';
+import AutoLayoutModal from '../modals/AutoLayoutModal';
 
 export default function Toolbar() {
   const diagramName = useStore(s => s.diagramName);
@@ -32,6 +34,7 @@ export default function Toolbar() {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showExportSQL, setShowExportSQL] = useState(false);
+  const [showAutoLayout, setShowAutoLayout] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleExportJSON = useCallback(() => {
@@ -240,6 +243,11 @@ export default function Toolbar() {
 
         <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 6px' }} />
 
+        {/* Auto Layout */}
+        <ToolbarButton icon={<LayoutGrid size={16} />} label="Auto Layout" onClick={() => setShowAutoLayout(true)} />
+
+        <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 6px' }} />
+
         {/* Undo/Redo */}
         <ToolbarButton icon={<Undo2 size={16} />} onClick={undo} title="Undo (Ctrl+Z)" />
         <ToolbarButton icon={<Redo2 size={16} />} onClick={redo} title="Redo (Ctrl+Shift+Z)" />
@@ -261,6 +269,7 @@ export default function Toolbar() {
 
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
       {showExportSQL && <ExportSQLModal onClose={() => setShowExportSQL(false)} />}
+      {showAutoLayout && <AutoLayoutModal onClose={() => setShowAutoLayout(false)} />}
     </>
   );
 }

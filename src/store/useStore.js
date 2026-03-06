@@ -147,6 +147,23 @@ const useStore = create((set, get) => ({
     });
   },
 
+  // Edge routes from auto-layout (maps relationship id -> array of {x,y} bend points)
+  edgeRoutes: {},
+
+  applyAutoLayout: (positions, edgeRoutes) => {
+    const s = get();
+    s._pushHistory();
+    set({
+      tables: s.tables.map(t => positions[t.id]
+        ? { ...t, position: { ...positions[t.id] } }
+        : t
+      ),
+      edgeRoutes: edgeRoutes || {},
+    });
+  },
+
+  clearEdgeRoutes: () => set({ edgeRoutes: {} }),
+
   // Column CRUD
   addColumn: (tableId) => {
     const s = get();

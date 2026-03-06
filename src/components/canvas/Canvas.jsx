@@ -43,16 +43,54 @@ function buildEdges(relationships, tables) {
     const toTable = tables.find(t => t.id === rel.toTable);
     if (!fromTable || !toTable) return null;
 
-    const fromRight = fromTable.position.x + (fromTable.width || 260) / 2 <
-                      toTable.position.x + (toTable.width || 260) / 2;
+    const fw = fromTable.width || 260;
+    const tw = toTable.width || 260;
+    const fromCx = fromTable.position.x + fw / 2;
+    const toCx = toTable.position.x + tw / 2;
+
+    // Check if tables overlap horizontally (vertically stacked)
+    const fromL = fromTable.position.x;
+    const fromR = fromL + fw;
+    const toL = toTable.position.x;
+    const toR = toL + tw;
+    const overlapX = Math.max(0, Math.min(fromR, toR) - Math.max(fromL, toL));
+    const minWidth = Math.min(fw, tw);
+    const isVerticallyStacked = overlapX > minWidth * 0.3;
+
+    let sourceHandle, targetHandle;
+
+    if (isVerticallyStacked) {
+      // Tables overlap horizontally — route on the same side
+      // Pick the side with more free space outside the table pair
+      const pairLeft = Math.min(fromL, toL);
+      const pairRight = Math.max(fromR, toR);
+      // Simple heuristic: use the side where both table edges are closer
+      // (tighter path). If right edges are closer to each other, use right.
+      const rightSpread = Math.abs(fromR - toR);
+      const leftSpread = Math.abs(fromL - toL);
+      const useRight = rightSpread <= leftSpread;
+
+      if (useRight) {
+        sourceHandle = `${rel.fromColumn}-right`;
+        targetHandle = `${rel.toColumn}-right-tgt`;
+      } else {
+        sourceHandle = `${rel.fromColumn}-left-src`;
+        targetHandle = `${rel.toColumn}-left`;
+      }
+    } else {
+      // Tables are side by side — route across
+      const fromIsLeft = fromCx < toCx;
+      sourceHandle = fromIsLeft ? `${rel.fromColumn}-right` : `${rel.fromColumn}-left-src`;
+      targetHandle = fromIsLeft ? `${rel.toColumn}-left` : `${rel.toColumn}-right-tgt`;
+    }
 
     return {
       id: rel.id,
       type: 'relationship',
       source: rel.fromTable,
       target: rel.toTable,
-      sourceHandle: fromRight ? `${rel.fromColumn}-right` : `${rel.fromColumn}-left-src`,
-      targetHandle: fromRight ? `${rel.toColumn}-left` : `${rel.toColumn}-right-tgt`,
+      sourceHandle,
+      targetHandle,
       data: {
         cardinality: rel.cardinality,
         fromTable: rel.fromTable,
@@ -94,7 +132,6 @@ export default function Canvas() {
   // Rebuild edges during drag so lines follow the table
   const onNodeDrag = useCallback((event, node, dragNodes) => {
     isDragging.current = true;
-    // Update the tables array temporarily with the dragged position for edge calculation
     const updatedTables = tables.map(t =>
       t.id === node.id ? { ...t, position: node.position } : t
     );
